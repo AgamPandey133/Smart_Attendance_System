@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.kapt")
     alias(libs.plugins.google.gms.google.services)
 }
 
@@ -57,6 +58,11 @@ dependencies {
     implementation(libs.firebase.firestore)
 
     implementation(libs.guava)
+    testImplementation(libs.junit.junit)
+
+    implementation("com.github.bumptech.glide:glide:4.16.0")
+    kapt("com.github.bumptech.glide:compiler:4.16.0")
+
 
 
 }
