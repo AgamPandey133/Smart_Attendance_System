@@ -1,8 +1,11 @@
 package com.example.smartattendancesystem
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.location.Location
+import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -12,6 +15,8 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.smartattendancesystem.databinding.ActivityMainBinding
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.mlkit.vision.common.InputImage
@@ -28,6 +33,17 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cameraExecutor: ExecutorService
     private lateinit var firebaseAuth: FirebaseAuth
     private lateinit var firestore: FirebaseFirestore
+
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
+//    private val allowedLatitude = 31.5000
+//    private val allowedLongitude = 76.2800
+//    private val allowedWifiSSID = "\"IIITUnaWiFi\"" // Quotes are part of SSID
+//    private val locationTolerance = 100 // meters
+
+    private val allowedLatitude = 22.6156895
+    private val allowedLongitude = 75.8094764
+    private val allowedWifiSSID =  "\"AirFiber-Vi5dah\"" // Quotes are part of SSID
+    private val locationTolerance = 100 // meters
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,16 +69,30 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnCapture.setOnClickListener {
-            Log.d("MainActivity", "Capture button clicked")
-            takePhotoAndDetectFace()
+            isValidLocationAndWifi { isValid ->
+                if (isValid) {
+                    takePhotoAndDetectFace()
+                } else {
+                    Toast.makeText(this, "❌ Not at allowed location or Wi-Fi", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
+
 
         binding.btnViewAttendance.setOnClickListener {
             startActivity(Intent(this, AttendanceActivity::class.java))
         }
+        binding.btnLogout.setOnClickListener {
+            firebaseAuth.signOut()
+            startActivity(Intent(this, AuthActivity::class.java))
+            finish()
+        }
+
 
 
         cameraExecutor = Executors.newSingleThreadExecutor()
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+
     }
 
     private fun startCamera() {
@@ -179,4 +209,45 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         cameraExecutor.shutdown()
     }
+
+    private fun isValidLocationAndWifi(onResult: (Boolean) -> Unit) {
+        // Check Wi-Fi SSID
+        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val currentSsid = wifiManager.connectionInfo.ssid
+        val isCorrectWifi = currentSsid == allowedWifiSSID
+
+        // Get current location
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 102)
+            onResult(false)
+            return
+        }
+
+        fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
+            if (location != null) {
+                val result = FloatArray(1)
+                Location.distanceBetween(
+                    allowedLatitude,
+                    allowedLongitude,
+                    location.latitude,
+                    location.longitude,
+                    result
+                )
+                val distance = result[0]
+                val isNearby = distance <= locationTolerance
+
+                onResult(isNearby && isCorrectWifi)
+            } else {
+                onResult(false)
+            }
+        }.addOnFailureListener {
+            onResult(false)
+        }
+
+    }
+
 }
